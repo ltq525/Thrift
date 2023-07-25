@@ -1,3 +1,4 @@
+
 from match_client.match import Match
 from match_client.match.ttypes import User
 
@@ -18,16 +19,14 @@ def main():
     protocol = TBinaryProtocol.TBinaryProtocol(transport)
 
     # Create a client to use the protocol encoder
-    client = Match.Client(protocol)
+    client = Calculator.Client(protocol)
 
     # Connect!
     transport.open()
 
-    user = User(1, 'ltq', 20)
+    user = User(1, 'ltq', 100)
     client.add_user(user, "")
 
     # Close!
     transport.close()
 
-if __name__== "__main__":
-    main()
