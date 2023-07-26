@@ -3,12 +3,16 @@
 
 #include "match_server/Match.h"
 #include "save_client/Save.h"
+#include <thrift/concurrency/ThreadManager.h>
+#include <thrift/concurrency/ThreadFactory.h>
 #include <thrift/protocol/TBinaryProtocol.h>
 #include <thrift/server/TSimpleServer.h>
+#include <thrift/server/TThreadedServer.h>
 #include <thrift/transport/TServerSocket.h>
 #include <thrift/transport/TBufferTransports.h>
 #include <thrift/transport/TTransportUtils.h>
 #include <thrift/transport/TSocket.h>
+#include <thrift/TToString.h>
 
 #include <iostream>
 #include <thread>
@@ -16,6 +20,7 @@
 #include <condition_variable>
 #include <queue>
 #include <vector>
+#include <unistd.h>
 
 using namespace ::apache::thrift;
 using namespace ::apache::thrift::protocol;
@@ -47,7 +52,7 @@ class Pool
 
     public:
         void save_client(int a, int b) {
-            std::cout << "Match success" << a << ' ' << b << std::endl;
+            std::cout << "Match success: " << a << ' ' << b << std::endl;
 
             std::shared_ptr<TTransport> socket(new TSocket("47.115.219.83", 9090));
             std::shared_ptr<TTransport> transport(new TBufferedTransport(socket));
@@ -131,6 +136,25 @@ class MatchHandler : virtual public MatchIf {
 
 };
 
+class MatchCloneFactory : virtual public MatchIfFactory {
+    public:
+        ~MatchCloneFactory() override = default;
+        MatchIf* getHandler(const ::apache::thrift::TConnectionInfo& connInfo) override
+        {
+            std::shared_ptr<TSocket> sock = std::dynamic_pointer_cast<TSocket>(connInfo.transport);
+            /*cout << "Incoming connection\n";
+              cout << "\tSocketInfo: "  << sock->getSocketInfo() << "\n";
+              cout << "\tPeerHost: "    << sock->getPeerHost() << "\n";
+              cout << "\tPeerAddress: " << sock->getPeerAddress() << "\n";
+              cout << "\tPeerPort: "    << sock->getPeerPort() << "\n";*/
+            return new MatchHandler;
+        }
+        void releaseHandler(MatchIf* handler) override {
+            delete handler;
+        }
+};
+
+
 void consume_task()
 {
     while(true)
@@ -138,7 +162,8 @@ void consume_task()
         std::unique_lock<std::mutex> lck(message_queue.m);
         if(message_queue.q.empty())
         {
-            message_queue.cv.wait(lck);
+            lck.unlock();
+            sleep(1);
         }
         else
         {
@@ -154,15 +179,15 @@ void consume_task()
 
 
 int main(int argc, char **argv) {
-    int port = 9090;
-    ::std::shared_ptr<MatchHandler> handler(new MatchHandler());
 
-    ::std::shared_ptr<TProcessor> processor(new MatchProcessor(handler));
-    ::std::shared_ptr<TServerTransport> serverTransport(new TServerSocket(port));
-    ::std::shared_ptr<TTransportFactory> transportFactory(new TBufferedTransportFactory());
-    ::std::shared_ptr<TProtocolFactory> protocolFactory(new TBinaryProtocolFactory());
+    //多线程
+    TThreadedServer server(
+            std::make_shared<MatchProcessorFactory>(std::make_shared<MatchCloneFactory>()),
+            std::make_shared<TServerSocket>(9090), //port
+            std::make_shared<TBufferedTransportFactory>(),
+            std::make_shared<TBinaryProtocolFactory>());
 
-    TSimpleServer server(processor, serverTransport, transportFactory, protocolFactory);
+
 
     std::cout << "Start Match Server" << std::endl;
 
