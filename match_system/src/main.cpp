@@ -2,10 +2,13 @@
 // You should copy it to another filename to avoid overwriting it.
 
 #include "match_server/Match.h"
+#include "save_client/Save.h"
 #include <thrift/protocol/TBinaryProtocol.h>
 #include <thrift/server/TSimpleServer.h>
 #include <thrift/transport/TServerSocket.h>
 #include <thrift/transport/TBufferTransports.h>
+#include <thrift/transport/TTransportUtils.h>
+#include <thrift/transport/TSocket.h>
 
 #include <iostream>
 #include <thread>
@@ -20,6 +23,7 @@ using namespace ::apache::thrift::transport;
 using namespace ::apache::thrift::server;
 
 using namespace ::match_service;
+using namespace ::save_service;
 //using namespace std;
 
 struct Task
@@ -42,6 +46,26 @@ class Pool
         std::vector<User> users;
 
     public:
+        void save_client(int a, int b) {
+            std::cout << "Match success" << a << ' ' << b << std::endl;
+
+            std::shared_ptr<TTransport> socket(new TSocket("47.115.219.83", 9090));
+            std::shared_ptr<TTransport> transport(new TBufferedTransport(socket));
+            std::shared_ptr<TProtocol> protocol(new TBinaryProtocol(transport));
+            SaveClient client(protocol);
+
+            try {
+                transport->open();
+
+                client.save_data("ltq", "3efce9af", a, b);
+
+                transport->close();
+            } catch (TException& tx) {
+                std::cout << "ERROR: " << tx.what() << std::endl;
+            }
+        }
+
+
         void match()
         {
             while(users.size() >= 2)
@@ -49,7 +73,7 @@ class Pool
                 auto a = users[0], b = users[1];
                 users.erase(users.begin());
                 users.erase(users.begin());
-                std::cout << "Match success" << a.id << ' ' << b.id << std::endl;
+                save_client(a.id, b.id);
             }
         }
 
